@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 from app.main import app
 from app.db import Base, get_db
 from app import models  # noqa: F401 — registers tables with Base.metadata
+from app.services.intent import IntentResult
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 engine = create_engine(
@@ -114,9 +115,12 @@ def test_chat_stream():
     ]
 
     fake_client = FakeAsyncClient(fake_lines)
+    no_intent = IntentResult(needs_retrieval=False, needs_web_search=False)
     with patch("app.routers.chat.httpx.AsyncClient", return_value=fake_client), \
          patch("app.routers.chat.run_rag", return_value=""), \
-         patch("app.routers.chat._index_message"):
+         patch("app.routers.chat._index_message"), \
+         patch("app.routers.chat.recognize_intent", return_value=no_intent), \
+         patch("app.routers.chat.web_search", return_value=[]):
         resp = client.post("/api/v1/chat/completions", json={
             "conversation_id": conv_id,
             "message": "hi",
@@ -140,9 +144,12 @@ def test_chat_stream_with_model():
     ]
 
     fake_client = FakeAsyncClient(fake_lines)
+    no_intent = IntentResult(needs_retrieval=False, needs_web_search=False)
     with patch("app.routers.chat.httpx.AsyncClient", return_value=fake_client), \
          patch("app.routers.chat.run_rag", return_value=""), \
-         patch("app.routers.chat._index_message"):
+         patch("app.routers.chat._index_message"), \
+         patch("app.routers.chat.recognize_intent", return_value=no_intent), \
+         patch("app.routers.chat.web_search", return_value=[]):
         resp = client.post("/api/v1/chat/completions", json={
             "conversation_id": conv_id,
             "message": "hi",
@@ -156,23 +163,31 @@ def test_chat_stream_with_model():
         assert fake_client.last_stream_call[1]["json"]["model"] == "glm-4"
 
 
-def test_chat_stream_with_rag_context():
-    resp = client.post("/api/v1/conversations", json={"title": "RAG Test"})
+def test_chat_stream_with_rag_and_web():
+    resp = client.post("/api/v1/conversations", json={"title": "RAG+Web Test"})
     conv_id = resp.json()["id"]
 
     fake_lines = [
-        'data: {"choices":[{"delta":{"content":"Based on history"}}]}',
+        'data: {"choices":[{"delta":{"content":"combined"}}]}',
         'data: [DONE]',
     ]
     fake_client = FakeAsyncClient(fake_lines)
+    intent = IntentResult(needs_retrieval=True, needs_web_search=True, refined_query="test query")
+    mock_web_sources = [{"title": "Result1", "url": "https://x.com", "snippet": "snip", "position": 1}]
     with patch("app.routers.chat.httpx.AsyncClient", return_value=fake_client), \
          patch("app.routers.chat.run_rag", return_value="历史对话上下文"), \
-         patch("app.routers.chat._index_message"):
+         patch("app.routers.chat._index_message"), \
+         patch("app.routers.chat.recognize_intent", return_value=intent), \
+         patch("app.routers.chat.web_search", return_value=mock_web_sources):
         resp = client.post("/api/v1/chat/completions", json={
             "conversation_id": conv_id,
             "message": "what did we discuss",
         })
         assert resp.status_code == 200
+        # System message includes both RAG and web context
         request_json = fake_client.last_stream_call[1]["json"]
         assert request_json["messages"][0]["role"] == "system"
-        assert "历史对话" in request_json["messages"][0]["content"]
+        # SSE output includes sources event
+        assert '"type": "sources"' in resp.text
+        assert '"Result1"' in resp.text
+        assert '"https://x.com"' in resp.text
