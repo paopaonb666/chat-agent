@@ -26,3 +26,17 @@ async def test_recognize_intent_no_retrieval():
         mock_post.return_value.raise_for_status = lambda: None
         intent = await recognize_intent("你好", [])
         assert intent.needs_retrieval is False
+
+
+@pytest.mark.asyncio
+async def test_recognize_intent_needs_web_search():
+    mock_resp = {
+        "message": {"content": '{"needs_retrieval": false, "needs_web_search": true, "refined_query": "2026年诺贝尔物理学奖", "reason": "用户询问最新新闻"}'}
+    }
+    with patch("app.services.intent.httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post.return_value.json = lambda: mock_resp
+        mock_post.return_value.raise_for_status = lambda: None
+        intent = await recognize_intent("谁能获得今年的诺贝尔奖", [])
+        assert intent.needs_web_search is True
+        assert intent.needs_retrieval is False
+        assert intent.refined_query == "2026年诺贝尔物理学奖"
