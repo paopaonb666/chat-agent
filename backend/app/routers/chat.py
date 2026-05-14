@@ -11,6 +11,8 @@ from app.models import Conversation, Message
 from app.services.rag_pipeline import run_rag
 from app.services.embedding import get_dense_embedding
 from app.services.milvus_store import get_milvus_client, ensure_collection, insert_message
+from app.services.intent import recognize_intent
+from app.services.web_search import web_search, format_web_context
 
 router = APIRouter()
 
@@ -130,9 +132,23 @@ async def chat_completions(payload: ChatCompletionsRequest, db: Session = Depend
         _index_message(conv_id, conv.user_id, "user", message, new_msg.id)
     )
 
-    rag_context = await run_rag(message, conv_id, conv.user_id, messages)
-    if rag_context:
-        messages = [{"role": "system", "content": rag_context}] + messages
+    intent = await recognize_intent(message, messages)
+
+    rag_context = ""
+    if intent.needs_retrieval:
+        rag_context = await run_rag(
+            message, conv_id, conv.user_id, messages,
+            query_override=intent.refined_query or message,
+        )
+
+    web_sources: list[dict] = []
+    search_query = intent.refined_query or message
+    if intent.needs_web_search:
+        web_sources = await web_search(search_query)
+
+    combined_parts = [p for p in [rag_context, format_web_context(web_sources)] if p]
+    if combined_parts:
+        messages = [{"role": "system", "content": "\n\n".join(combined_parts)}] + messages
 
     cfg = MODEL_CONFIG.get(conv.model, MODEL_CONFIG["deepseek-chat"])
     api_key = cfg["api_key"]
@@ -140,6 +156,8 @@ async def chat_completions(payload: ChatCompletionsRequest, db: Session = Depend
     model_name = cfg["model"]
 
     async def event_stream():
+        if web_sources:
+            yield f"data: {json.dumps({'type': 'sources', 'sources': web_sources})}\n\n"
         async with httpx.AsyncClient() as client:
             async with client.stream(
                 "POST",
