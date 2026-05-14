@@ -9,13 +9,18 @@ async def run_rag(
     conversation_id: str,
     user_id: int | None,
     messages: list[dict],
+    *,
+    query_override: str | None = None,
     top_k_hybrid: int = 15,
     top_n_rerank: int = 5,
 ) -> str:
-    intent = await recognize_intent(query, messages)
-    if not intent.needs_retrieval:
-        return ""
-    refined = intent.refined_query or query
+    if query_override:
+        refined = query_override
+    else:
+        intent = await recognize_intent(query, messages)
+        if not intent.needs_retrieval:
+            return ""
+        refined = intent.refined_query or query
     dense_vector = await get_dense_embedding(refined)
     hybrid_results = await hybrid_search(refined, dense_vector, user_id, conversation_id, top_k=top_k_hybrid)
     if not hybrid_results:
