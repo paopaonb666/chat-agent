@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch
-from app.services.hybrid_search import hybrid_search, reciprocal_rank_fusion, _bm25_search
+from app.services.hybrid_search import hybrid_search, _reciprocal_rank_fusion, _bm25_search
 
 
 def test_bm25_search_ranking():
@@ -18,7 +18,7 @@ def test_bm25_search_ranking():
 def test_reciprocal_rank_fusion():
     list1 = [{"id": "a"}, {"id": "b"}]
     list2 = [{"id": "b"}, {"id": "c"}]
-    fused = reciprocal_rank_fusion(list1, list2, k=60)
+    fused = _reciprocal_rank_fusion(list1, list2, k=60)
     ids = [r["id"] for r in fused]
     assert "b" in ids
     assert len(fused) == 3
@@ -28,10 +28,11 @@ def test_reciprocal_rank_fusion():
 async def test_hybrid_search_combines_sources():
     with patch("app.services.hybrid_search.milvus_search_dense") as mock_dense, patch(
         "app.services.hybrid_search._fetch_candidates_from_pg"
-    ) as mock_pg:
+    ) as mock_pg, patch("app.core.milvus.get_milvus_client") as mock_client:
         mock_dense.return_value = [{"id": "d1", "content": "dense hit"}]
         mock_pg.return_value = [{"id": "k1", "content": "keyword hit"}]
-        results = await hybrid_search("query", [0.1] * 768, user_id=1, top_k=5)
+        mock_db = object()
+        results = await hybrid_search(mock_db, "query", [0.1] * 768, user_id=1, top_k=5)
         assert len(results) >= 1
         mock_dense.assert_called_once()
-        mock_pg.assert_called_once()
+        mock_pg.assert_called_once_with(mock_db, 1, limit=200)

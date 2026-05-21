@@ -1,17 +1,22 @@
-import os
 from pymilvus import MilvusClient, DataType
 
 COLLECTION_NAME = "conversation_history"
-MILVUS_URI = os.getenv("MILVUS_URI", "http://localhost:19530")
 
 
-def get_milvus_client() -> MilvusClient:
-    return MilvusClient(uri=MILVUS_URI)
-
-
-def ensure_collection(client: MilvusClient, dim: int = 768) -> None:
+def ensure_collection(client: MilvusClient, dim: int = 1024) -> None:
     if COLLECTION_NAME in client.list_collections():
-        return
+        # Check dimension match — if model changed, drop and recreate
+        schema = client.describe_collection(COLLECTION_NAME)
+        for field in schema.get("fields", []):
+            if field.get("name") == "dense_embedding":
+                existing_dim = field.get("params", {}).get("dim")
+                if existing_dim == dim:
+                    return
+                client.drop_collection(COLLECTION_NAME)
+                break
+        else:
+            return
+
     schema = MilvusClient.create_schema(auto_id=True, enable_dynamic_field=True)
     schema.add_field("id", DataType.INT64, is_primary=True, auto_id=True)
     schema.add_field("conversation_id", DataType.VARCHAR, max_length=36)
@@ -67,16 +72,17 @@ def search_dense(
     user_id: int | None,
     top_k: int = 10,
 ) -> list[dict]:
-    expr = None if user_id is None else f"user_id == {user_id}"
-    res = client.search(
-        collection_name=COLLECTION_NAME,
-        data=[dense_embedding],
-        anns_field="dense_embedding",
-        search_params={"metric_type": "COSINE", "params": {"ef": 64}},
-        limit=top_k,
-        output_fields=["conversation_id", "role", "content", "message_id", "timestamp"],
-        filter=expr,
-    )
+    kwargs: dict = {
+        "collection_name": COLLECTION_NAME,
+        "data": [dense_embedding],
+        "anns_field": "dense_embedding",
+        "search_params": {"metric_type": "COSINE", "params": {"ef": 64}},
+        "limit": top_k,
+        "output_fields": ["conversation_id", "role", "content", "message_id", "timestamp"],
+    }
+    if user_id is not None:
+        kwargs["filter"] = f"user_id == {user_id}"
+    res = client.search(**kwargs)
     hits = []
     for group in res:
         for hit in group:
