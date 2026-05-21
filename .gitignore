@@ -37,5 +37,9 @@ Thumbs.db
 uvicorn.log
 ollama.log
 
+# Markdown — keep only root README.md
+*.md
+!README.md
+
 # Config
 searxng/
