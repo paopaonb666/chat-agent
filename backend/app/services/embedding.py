@@ -1,15 +1,12 @@
-import os
 import httpx
-
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-EMBEDDING_MODEL = "qwen3-embedding:0.6b"
+from app.core.config import settings
 
 
 async def get_dense_embedding(text: str) -> list[float]:
     async with httpx.AsyncClient() as client:
         resp = await client.post(
-            f"{OLLAMA_BASE_URL}/api/embed",
-            json={"model": EMBEDDING_MODEL, "input": text},
+            f"{settings.ollama_base_url}/api/embed",
+            json={"model": settings.embedding_model, "input": text},
             timeout=30.0,
         )
         resp.raise_for_status()

@@ -1,77 +1,132 @@
+"""
+记忆意图识别 — 在mem0提取之前过滤对话。
+使用SiliconFlow的Qwen2.5-7B来判断对话回合是否包含值得长期记忆的
+个人信息，避免操作噪音污染记忆存储。
+"""
 import json
-import os
-from pydantic import BaseModel
+import logging
+
 import httpx
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-INTENT_MODEL = "qwen2.5:0.5b"
+from app.core.config import settings
 
-PROMPT_TEMPLATE = """你是一个对话意图分析助手。请分析用户输入，判断是否需要检索对话历史或联网搜索来回答。
-输出严格为 JSON 格式，不要包含 markdown 代码块或其他说明：
+logger = logging.getLogger(__name__)
+
+PROMPT_TEMPLATE = """你是一个记忆筛选助手。你的任务是判断一段对话是否包含值得长期记忆的用户个人信息，并从对话中提取出来。
+
+## 需要长期记忆（needs_long_term_memory=true）
+
+这些信息应在 memory_content 中提取出来：
+
+- 用户身份信息：姓名、年龄、性别、职业、学历、公司
+- 用户联系方式：电话、邮箱、社交账号
+- 用户地理位置：居住城市、工作地址、常去地点
+- 用户个人经历：工作经历、学习经历、人生重要事件
+- 用户偏好习惯：饮食偏好、兴趣爱好、作息习惯、消费偏好、阅读偏好
+- 用户情感与人际关系：家庭情况、伴侣/朋友信息、情感状态
+- 用户健康状况：过敏史、慢性病、用药情况（用户主动提及的）
+- 用户的长期目标、价值观、人生规划、信仰
+
+## 不需要长期记忆（needs_long_term_memory=false）
+
+这些内容应跳过，memory_content 填空字符串：
+
+- 用户在软件上的操作指令：搜索、打开设置、生成图片、翻译等
+- 临时性任务请求：帮我写邮件、查天气、写代码、改bug
+- 与 AI 的交互行为：你好、谢谢、再见、你说得对
+- 通用知识问答（不涉及用户个人信息）
+- 当前会话上下文（如讨论的某个话题，除非用户明确表达了个人偏好）
+- 用户对 AI 回答的评价或反馈
+
+## 输出格式
+
+严格输出 JSON，只包含以下两个字段：
 {{
-  "needs_retrieval": true/false,
-  "needs_web_search": true/false,
-  "refined_query": "用于检索/搜索的优化查询",
-  "reason": "判断理由"
+  "needs_long_term_memory": true/false,
+  "memory_content": "提取出的个人信息摘要，用中文描述。如果不需要记忆则为空字符串。"
 }}
-判断标准：
-1. 涉及具体事实、知识、事件 → 需要搜索（needs_web_search=true）
-2. 涉及长对话中之前讨论过的内容 → 需要检索历史（needs_retrieval=true）
-3. 闲聊、打招呼、简单交流 → 都不需要
-4. 可以同时需要搜索和检索历史
 
-当前对话历史（最近5轮）：
-{history}
+## 对话内容
 
-用户输入：{query}
-"""
+用户：{user_message}
+
+AI：{assistant_message}"""
 
 
-class IntentResult(BaseModel):
-    needs_retrieval: bool = False
-    needs_web_search: bool = False
-    refined_query: str = ""
-    reason: str = ""
+async def should_extract_memory(messages: list[dict]) -> tuple[bool, str]:
+    """检查当前对话回合是否包含值得记忆的个人信息。
 
+    参数:
+        messages: 本轮对话的消息列表，格式为 {"role": "user"/"assistant", "content": "..."}
 
-def _format_history(messages: list[dict]) -> str:
-    recent = messages[-10:] if len(messages) > 10 else messages
-    lines = []
-    for m in recent:
-        role = m.get("role", "user")
-        content = m.get("content", "")
-        lines.append(f"{role}: {content}")
-    return "\n".join(lines) if lines else "（无历史）"
+    返回:
+        (needs_long_term_memory, memory_content) — memory_content 是适合直接存储到mem0的中文摘要。
+        任何错误情况下返回 (False, "")（故障安全）。
+    """
+    user_message = ""
+    assistant_message = ""
+    for m in messages:
+        if m.get("role") == "user":
+            user_message = m.get("content", "")
+        elif m.get("role") == "assistant":
+            assistant_message = m.get("content", "")
 
+    if not user_message.strip():
+        return False, ""
 
-def _extract_json(text: str) -> dict:
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.lower().startswith("json"):
-            text = text[4:].strip()
+    prompt = PROMPT_TEMPLATE.format(
+        user_message=user_message,
+        assistant_message=assistant_message,
+    )
+
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return {"needs_retrieval": False, "needs_web_search": False, "refined_query": "", "reason": "parse_failed"}
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{settings.siliconflow_base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.siliconflow_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": settings.siliconflow_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "response_format": {"type": "json_object"},
+                    "temperature": 0.0,
+                    "max_tokens": 512,
+                    "stream": False,
+                },
+                timeout=15.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            raw = data["choices"][0]["message"]["content"].strip()
 
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                logger.warning("Memory intent: JSON parse failed, raw=%s", raw[:200])
+                return False, ""
 
-async def recognize_intent(query: str, messages: list[dict]) -> IntentResult:
-    prompt = PROMPT_TEMPLATE.format(history=_format_history(messages), query=query)
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{OLLAMA_BASE_URL}/api/chat",
-            json={
-                "model": INTENT_MODEL,
-                "messages": [{"role": "user", "content": prompt}],
-                "stream": False,
-                "format": "json",
-                "options": {"temperature": 0.0},
-            },
-            timeout=30.0,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        content = data.get("message", {}).get("content", "")
-        parsed = _extract_json(content)
-        return IntentResult(**parsed)
+            needs = parsed.get("needs_long_term_memory", False)
+            content = parsed.get("memory_content", "")
+
+            if not isinstance(needs, bool) or not isinstance(content, str):
+                logger.warning("Memory intent: unexpected types needs=%s content=%s", type(needs), type(content))
+                return False, ""
+
+            if needs and content.strip():
+                logger.info("Memory intent: WILL store — %s", content.strip()[:100])
+                return True, content.strip()
+            else:
+                logger.debug("Memory intent: skip (needs=%s, content_empty=%s)", needs, not content.strip())
+                return False, ""
+
+    except httpx.HTTPStatusError as e:
+        logger.warning("Memory intent: HTTP %s — %s", e.response.status_code, e.response.text[:200])
+        return False, ""
+    except (httpx.RequestError, httpx.TimeoutException) as e:
+        logger.warning("Memory intent: request failed — %s", e)
+        return False, ""
+    except Exception:
+        logger.exception("Memory intent: unexpected error")
+        return False, ""

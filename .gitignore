@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# Environment
+.env
+
+# Database
+*.db
+*.sqlite3
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Uploads
+backend/uploads/
+frontend/uploads/
+
+# Claude
+.claude/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+uvicorn.log
+ollama.log
+
+# Config
+searxng/
