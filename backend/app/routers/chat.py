@@ -7,12 +7,13 @@ import asyncio
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db import get_db
-from app.models import Conversation, Message
+from app.models import Conversation, Message, UserMemory
 from app.services.rag_pipeline import run_rag
 from app.core.sse import step_line
 from app.core.metrics import get_memory_op_counter
 from app.services.memory_client import get_memory
 from app.services.intent import should_extract_memory
+from app.services.prompts import MEMORY_GUARDRAIL_INSTRUCTION
 from app.deps import get_current_user
 from app.services.loop_agent import LoopAgent
 from app.services.indexing import index_message
@@ -141,6 +142,7 @@ async def chat_completions(payload: ChatCompletionsRequest, db: Session = Depend
         memory_context = ""
         try:
             uid = str(conv.user_id) if conv.user_id else str(current_user.id)
+            logger.info("Phase 1 (memory): searching for user_id=%s query=%.50s", uid, message)
             memory = get_memory()
             results = memory.search(
                 query=message,
@@ -151,7 +153,11 @@ async def chat_completions(payload: ChatCompletionsRequest, db: Session = Depend
             get_memory_op_counter().labels(operation="search", status="success").inc()
             if items:
                 lines = [f"- {r['memory']}" for r in items]
-                memory_context = "以下是该用户的长期记忆中存储的相关信息：\n" + "\n".join(lines)
+                memory_context = (
+                    MEMORY_GUARDRAIL_INSTRUCTION + "\n\n"
+                    + "以下是该用户的长期记忆中存储的相关信息：\n"
+                    + "\n".join(lines)
+                )
                 yield step_line("memory_check", "completed", "记忆检索", f"找到 {len(items)} 条相关记忆")
             else:
                 yield step_line("memory_check", "completed", "记忆检索", "未找到相关记忆")
@@ -267,14 +273,25 @@ async def chat_completions(payload: ChatCompletionsRequest, db: Session = Depend
                 )
 
         # ── Phase 7: Auto-extract memories via mem0 ──────────────────
+        logger.info(
+            "Phase 7 (memory): entering — assistant_content len=%d, enable_memory_intent_filter=%s",
+            len(assistant_content) if assistant_content else 0,
+            settings.enable_memory_intent_filter,
+        )
         if assistant_content:
             try:
                 uid = str(conv.user_id) if conv.user_id else str(current_user.id)
                 if settings.enable_memory_intent_filter:
+                    logger.info("Phase 7 (memory): calling should_extract_memory...")
                     needs_memory, memory_content = await should_extract_memory([
                         {"role": "user", "content": message},
                         {"role": "assistant", "content": assistant_content},
                     ])
+                    logger.info(
+                        "Phase 7 (memory): intent result — needs=%s, content_len=%d",
+                        needs_memory,
+                        len(memory_content) if memory_content else 0,
+                    )
                     if needs_memory and memory_content:
                         logger.info("Memory intent: storing — %s", memory_content[:80])
                         memory = get_memory()
@@ -283,6 +300,13 @@ async def chat_completions(payload: ChatCompletionsRequest, db: Session = Depend
                             user_id=uid,
                         )
                         get_memory_op_counter().labels(operation="add", status="success").inc()
+                        # Sync to PostgreSQL
+                        try:
+                            pg_mem = UserMemory(user_id=int(uid), content=memory_content, source="auto_extracted")
+                            db.add(pg_mem)
+                            db.commit()
+                        except Exception:
+                            logger.warning("Failed to write memory to PostgreSQL", exc_info=True)
                     else:
                         logger.debug("Memory intent: skipped (no personal info detected)")
                 else:
@@ -295,8 +319,17 @@ async def chat_completions(payload: ChatCompletionsRequest, db: Session = Depend
                         user_id=uid,
                     )
                     get_memory_op_counter().labels(operation="add", status="success").inc()
+                    # Sync to PostgreSQL (store user message as the memory content since mem0 extracts internally)
+                    try:
+                        pg_mem = UserMemory(user_id=int(uid), content=message, source="auto_extracted")
+                        db.add(pg_mem)
+                        db.commit()
+                    except Exception:
+                        logger.warning("Failed to write memory to PostgreSQL", exc_info=True)
             except Exception:
                 logger.exception("mem0 memory extraction failed")
                 get_memory_op_counter().labels(operation="add", status="error").inc()
+        else:
+            logger.warning("Phase 7 (memory): SKIPPED — assistant_content is empty or None")
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

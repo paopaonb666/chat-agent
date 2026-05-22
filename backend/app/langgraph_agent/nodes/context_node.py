@@ -1,5 +1,6 @@
 from langchain.messages import SystemMessage
 
+from app.services.prompts import MEMORY_GUARDRAIL_INSTRUCTION
 from app.langgraph_agent.state import AgentState
 
 
@@ -24,6 +25,7 @@ async def context_node(state: AgentState) -> dict:
 
     system_messages = []
     if combined_parts:
+        system_messages.append(SystemMessage(content=MEMORY_GUARDRAIL_INSTRUCTION))
         system_content = "\n\n".join(combined_parts)
         system_messages.append(SystemMessage(content=system_content))
 

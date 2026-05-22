@@ -5,7 +5,7 @@ from langchain.tools import tool
 from langgraph.config import get_stream_writer
 
 from app.services.web_search import web_search, format_web_context
-from app.services.query_validator import validate_and_enhance_query
+from app.services.query_validator import enhance_query
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ async def web_search_tool(query: str) -> str:
     writer = get_stream_writer()
 
     # 前置校验：即使 LLM 生成了坏 query，也在工具层拦截并修正
-    validation = validate_and_enhance_query(query)
+    validation = await enhance_query(query)
     search_query = validation.query
 
     if validation.was_enhanced:

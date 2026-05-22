@@ -3,7 +3,7 @@ import asyncio
 import logging
 from app.core.config import settings
 from app.services.query_validator import (
-    validate_and_enhance_query,
+    enhance_query,
     is_low_quality_result,
 )
 from app.services.search_engines import FallbackSearchManager
@@ -52,7 +52,7 @@ async def web_search(query: str, max_results: int = 8, user_message: str = "") -
         user_message: 用户原始消息，用于 query 增强的上下文
     """
     # 1. Query 校验与增强
-    validation = validate_and_enhance_query(query, user_message)
+    validation = await enhance_query(query, user_message)
     search_query = validation.query
     if validation.was_enhanced:
         logger.info("Query enhanced: '%s' -> '%s' (%s)", query, search_query, validation.reason)

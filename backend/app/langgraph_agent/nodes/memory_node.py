@@ -3,6 +3,7 @@ import logging
 from langgraph.config import get_stream_writer
 
 from app.services.memory_client import get_memory
+from app.services.prompts import MEMORY_GUARDRAIL_INSTRUCTION
 from app.langgraph_agent.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ async def memory_node(state: AgentState) -> dict:
     })
 
     memory_context = ""
+    logger.info("Memory node: searching user_id=%s query=%.50s", state["user_id"], state["user_message"])
     try:
         memory = get_memory()
         results = memory.search(
@@ -30,7 +32,12 @@ async def memory_node(state: AgentState) -> dict:
         items = results.get("results", []) if isinstance(results, dict) else []
         if items:
             lines = [f"- {r['memory']}" for r in items]
-            memory_context = "以下是该用户的长期记忆中存储的相关信息：\n" + "\n".join(lines)
+            memory_context = (
+                MEMORY_GUARDRAIL_INSTRUCTION + "\n\n"
+                + "以下是该用户的长期记忆中存储的相关信息：\n"
+                + "\n".join(lines)
+            )
+            logger.info("Memory node: found %d results", len(items))
             writer({
                 "type": "step",
                 "name": "memory_check",
@@ -39,6 +46,7 @@ async def memory_node(state: AgentState) -> dict:
                 "detail": f"找到 {len(items)} 条相关记忆",
             })
         else:
+            logger.info("Memory node: no results found")
             writer({
                 "type": "step",
                 "name": "memory_check",
