@@ -56,7 +56,12 @@ class TestWebSearchTool:
             {"title": "拉康 精神分析", "url": "http://test.com", "snippet": "理论", "position": 1}
         ]
 
-        with patch("app.langgraph_agent.tools.web_search.web_search", new=AsyncMock(return_value=mock_sources)):
+        with patch("app.langgraph_agent.tools.web_search.web_search", new=AsyncMock(return_value=mock_sources)), \
+             patch("app.langgraph_agent.tools.web_search.enhance_query") as mock_enhance:
+            from app.services.query_validator import EnhancedQueryResult
+            mock_enhance.return_value = EnhancedQueryResult(
+                query="拉康 精神分析", was_enhanced=True, reason="split noun fixed"
+            )
             with patch("app.langgraph_agent.tools.web_search.get_stream_writer") as mock_writer:
                 mock_writer.return_value = lambda x: None
                 result = await web_search_tool.ainvoke({"query": "拉"})

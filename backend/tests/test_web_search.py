@@ -73,7 +73,12 @@ async def test_web_search_enhances_bad_query():
     ]
     mock_manager = AsyncMock()
     mock_manager.async_search.return_value = mock_results
-    with patch("app.services.web_search._get_search_manager", return_value=mock_manager):
+    with patch("app.services.web_search._get_search_manager", return_value=mock_manager), \
+         patch("app.services.web_search.enhance_query") as mock_enhance:
+        from app.services.query_validator import EnhancedQueryResult
+        mock_enhance.return_value = EnhancedQueryResult(
+            query="拉康 精神分析 理论", was_enhanced=True, reason="split noun fixed"
+        )
         results = await web_search("拉", user_message="拉康的理论是什么")
         called_query = mock_manager.async_search.call_args[0][0]
         assert "拉康" in called_query

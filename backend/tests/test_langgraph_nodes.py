@@ -70,6 +70,7 @@ class TestMemoryNode:
 
         assert "Python" in result["memory_context"]
         assert "Beijing" in result["memory_context"]
+        assert "严禁编造" in result["memory_context"]
 
     @pytest.mark.asyncio
     async def test_handles_exception_gracefully(self):
@@ -161,9 +162,12 @@ class TestContextNode:
         state = _make_state(memory_context="Memory content", rag_context="RAG content")
         result = await context_node(state)
 
-        assert len(result["messages"]) == 1
-        assert "Memory content" in result["messages"][0].content
-        assert "RAG content" in result["messages"][0].content
+        assert len(result["messages"]) == 2
+        # First message: guardrail instruction
+        assert "严禁编造" in result["messages"][0].content
+        # Second message: combined memory + RAG
+        assert "Memory content" in result["messages"][1].content
+        assert "RAG content" in result["messages"][1].content
 
     @pytest.mark.asyncio
     async def test_adds_search_instruction_with_examples_when_enabled(self):

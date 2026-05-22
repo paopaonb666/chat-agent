@@ -21,17 +21,21 @@ async def rag_node(state: AgentState) -> dict:
     })
 
     rag_context = ""
+    logger.info("RAG node: query=%.50s conv_id=%s", state["user_message"], state["conversation_id"])
     try:
         messages_for_rag = [
             {"role": getattr(m, "type", "user"), "content": getattr(m, "content", "")}
             for m in state["messages"]
         ]
+        raw_uid = state.get("user_id", "")
+        user_id_int = int(raw_uid) if raw_uid and str(raw_uid).isdigit() else None
         rag_context = await asyncio.wait_for(
             run_rag(
-                state["user_message"],
-                state["conversation_id"],
-                None,
-                messages_for_rag,
+                None,                     # db — let run_rag create its own session
+                state["user_message"],    # query
+                state["conversation_id"], # conversation_id
+                user_id_int,              # user_id
+                messages_for_rag,         # messages
                 query_override=state["user_message"],
             ),
             timeout=10.0,
