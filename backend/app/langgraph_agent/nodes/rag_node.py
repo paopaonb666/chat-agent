@@ -14,6 +14,14 @@ async def rag_node(state: AgentState) -> dict:
 
     writer({
         "type": "step",
+        "name": "query_rewrite",
+        "status": "running",
+        "label": "查询改写",
+        "detail": "正在优化检索查询...",
+    })
+
+    writer({
+        "type": "step",
         "name": "rag_retrieval",
         "status": "running",
         "label": "知识库检索",
@@ -31,16 +39,23 @@ async def rag_node(state: AgentState) -> dict:
         user_id_int = int(raw_uid) if raw_uid and str(raw_uid).isdigit() else None
         rag_context = await asyncio.wait_for(
             run_rag(
-                None,                     # db — let run_rag create its own session
-                state["user_message"],    # query
-                state["conversation_id"], # conversation_id
-                user_id_int,              # user_id
-                messages_for_rag,         # messages
+                None,
+                state["user_message"],
+                state["conversation_id"],
+                user_id_int,
+                messages_for_rag,
                 query_override=state["user_message"],
             ),
             timeout=10.0,
         )
         if rag_context:
+            writer({
+                "type": "step",
+                "name": "query_rewrite",
+                "status": "completed",
+                "label": "查询改写",
+                "detail": "查询优化完成",
+            })
             writer({
                 "type": "step",
                 "name": "rag_retrieval",
@@ -51,6 +66,13 @@ async def rag_node(state: AgentState) -> dict:
         else:
             writer({
                 "type": "step",
+                "name": "query_rewrite",
+                "status": "completed",
+                "label": "查询改写",
+                "detail": "查询优化完成",
+            })
+            writer({
+                "type": "step",
                 "name": "rag_retrieval",
                 "status": "completed",
                 "label": "知识库检索",
@@ -58,6 +80,13 @@ async def rag_node(state: AgentState) -> dict:
             })
     except Exception:
         logger.exception("RAG retrieval failed")
+        writer({
+            "type": "step",
+            "name": "query_rewrite",
+            "status": "error",
+            "label": "查询改写",
+            "detail": "改写失败",
+        })
         writer({
             "type": "step",
             "name": "rag_retrieval",
