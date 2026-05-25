@@ -13,6 +13,9 @@ _rag_result: Histogram | None = None
 _MEMORY_OP_NAME = "memory_operations_total"
 _memory_op: Counter | None = None
 
+_QUERY_REWRITE_NAME = "query_rewrites_total"
+_query_rewrite_counter: Counter | None = None
+
 
 def _get_or_create_metric(name: str, factory, *args, **kwargs):
     """Retrieve existing metric by name or create a new one."""
@@ -75,3 +78,14 @@ def get_memory_op_counter() -> Counter:
         _MEMORY_OP_NAME, "Total memory operations", ["operation", "status"],
     )
     return _memory_op
+
+
+def get_query_rewrite_counter() -> Counter:
+    global _query_rewrite_counter
+    if _query_rewrite_counter is not None:
+        return _query_rewrite_counter
+    _query_rewrite_counter = _get_or_create_metric(
+        _QUERY_REWRITE_NAME, Counter,
+        _QUERY_REWRITE_NAME, "Total query rewrites", ["status"],
+    )
+    return _query_rewrite_counter

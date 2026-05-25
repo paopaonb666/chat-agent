@@ -1,3 +1,4 @@
+import logging
 import time
 from sqlalchemy.orm import Session
 from app.services.embedding import get_dense_embedding
@@ -7,7 +8,11 @@ from app.core.metrics import (
     get_rag_retrieval_counter,
     get_rag_retrieval_latency,
     get_rag_result_count,
+    get_query_rewrite_counter,
 )
+from app.services.query_rewriter import rewrite_query, RewriteStrategy
+
+logger = logging.getLogger(__name__)
 
 
 async def run_rag(
@@ -29,6 +34,27 @@ async def run_rag(
         own_session = True
     try:
         refined = query_override or query
+
+        # Query rewrite (skip if query_override is explicitly provided)
+        if not query_override:
+            try:
+                rewrite_result = await rewrite_query(
+                    query, messages=messages, strategy=RewriteStrategy.CONTEXT
+                )
+                if rewrite_result.was_rewritten:
+                    refined = rewrite_result.query
+                    get_query_rewrite_counter().labels(status="success").inc()
+                    logger.info(
+                        "Query rewritten for RAG: '%s' → '%s' via %s",
+                        query, refined, rewrite_result.strategy.value if rewrite_result.strategy else "unknown",
+                    )
+                else:
+                    get_query_rewrite_counter().labels(status="skipped").inc()
+                    logger.debug("Query rewrite skipped: %s", rewrite_result.reason)
+            except Exception:
+                logger.exception("Query rewrite failed, using original query")
+                get_query_rewrite_counter().labels(status="error").inc()
+
         dense_vector = await get_dense_embedding(refined)
 
         t0 = time.time()

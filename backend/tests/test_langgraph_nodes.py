@@ -139,10 +139,15 @@ class TestRagNode:
             with patch("app.langgraph_agent.nodes.rag_node.get_stream_writer", return_value=writer):
                 await rag_node(state)
 
-        assert len(writer.events) == 2
-        assert writer.events[0]["name"] == "rag_retrieval"
+        assert len(writer.events) == 4
+        assert writer.events[0]["name"] == "query_rewrite"
         assert writer.events[0]["status"] == "running"
-        assert writer.events[1]["status"] == "completed"
+        assert writer.events[1]["name"] == "rag_retrieval"
+        assert writer.events[1]["status"] == "running"
+        assert writer.events[2]["name"] == "query_rewrite"
+        assert writer.events[2]["status"] == "completed"
+        assert writer.events[3]["name"] == "rag_retrieval"
+        assert writer.events[3]["status"] == "completed"
 
 
 class TestContextNode:
