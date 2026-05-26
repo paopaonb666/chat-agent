@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     zhipu_model: str = "glm-4"
 
     # Milvus
-    milvus_uri: str = "http://localhost:19530"
+    milvus_uri: str = "./milvus.db"
 
     # Hybrid search time decay
     time_decay_max_bonus: float = 0.2
@@ -60,8 +60,10 @@ class Settings(BaseSettings):
     @field_validator("milvus_uri", mode="before")
     @classmethod
     def _validate_milvus_uri(cls, v: str) -> str:
-        if isinstance(v, str) and v and not v.startswith(("http://", "https://")):
-            raise ValueError("MILVUS_URI must start with http:// or https://")
+        if isinstance(v, str) and v and not (
+            v.startswith(("http://", "https://")) or v.endswith(".db")
+        ):
+            raise ValueError("MILVUS_URI must start with http://, https://, or end with .db")
         return v
 
     @field_validator("env", mode="before")
@@ -88,6 +90,14 @@ class Settings(BaseSettings):
 
     # LangGraph agent feature flag
     use_langgraph_agent: bool = False
+
+    # Redis / ARQ
+    redis_url: str = "redis://localhost:6379"
+
+    # Knowledge base
+    knowledge_upload_max_size: int = 10 * 1024 * 1024  # 10 MB
+    knowledge_chunk_max_chars: int = 800
+    knowledge_chunk_overlap: int = 0
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

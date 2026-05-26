@@ -11,6 +11,7 @@ from app.core.metrics import (
     get_query_rewrite_counter,
 )
 from app.services.query_rewriter import rewrite_query, RewriteStrategy
+from app.services.knowledge_rag import search_knowledge_base_rag
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,12 @@ async def run_rag(
             except Exception:
                 logger.exception("Query rewrite failed, using original query")
                 get_query_rewrite_counter().labels(status="error").inc()
+
+        # Step 0:优先查知识库（顺序式策略）
+        kb_context = await search_knowledge_base_rag(db, refined, user_id, top_k=top_k_hybrid)
+        if kb_context:
+            get_rag_retrieval_counter().labels(status="kb_hit").inc()
+            return kb_context
 
         dense_vector = await get_dense_embedding(refined)
 

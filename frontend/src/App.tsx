@@ -4,10 +4,11 @@ import ChatArea from './components/ChatArea';
 import ErrorBoundary from './components/ErrorBoundary';
 import AdminPage from './pages/AdminPage';
 import MemoriesPage from './pages/MemoriesPage';
+import KnowledgePage from './pages/KnowledgePage';
 import { useChatStream } from './hooks/useChatStream';
 import { useAuth } from './hooks/useAuth';
 
-type Page = 'chat' | 'memories' | 'admin';
+type Page = 'chat' | 'memories' | 'admin' | 'knowledge';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('chat');
@@ -64,6 +65,8 @@ export default function App() {
           <AdminPage />
         ) : currentPage === 'memories' ? (
           <MemoriesPage />
+        ) : currentPage === 'knowledge' ? (
+          <KnowledgePage />
         ) : (
           <ChatArea
             messages={currentMessages}

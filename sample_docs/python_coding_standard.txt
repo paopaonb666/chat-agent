@@ -1,0 +1,31 @@
+Python 项目编码规范 V2.0
+
+1. 环境管理
+所有项目必须使用 Poetry 进行依赖管理，Python 版本不低于 3.10。
+虚拟环境目录统一命名为 .venv，并加入 .gitignore。
+
+2. 代码风格
+- 遵循 PEP 8，行长度限制 100 字符。
+- 使用 black 进行代码格式化，isort 管理 import 排序。
+- 类型注解：函数参数和返回值必须标注类型。
+
+3. 项目结构
+src/
+  my_project/
+    __init__.py
+    models.py
+    services/
+      __init__.py
+      user_service.py
+tests/
+  conftest.py
+  test_user_service.py
+
+4. 测试要求
+- 单元测试覆盖率不低于 80%。
+- 使用 pytest，测试文件名以 test_ 开头。
+- 外部 HTTP 调用必须使用 responses 或 VCR.py 进行 mock。
+
+5. CI/CD
+合并到 main 分支前必须通过 GitHub Actions 的 lint 和 test 检查。
+部署使用 Docker，基础镜像指定 python:3.11-slim。

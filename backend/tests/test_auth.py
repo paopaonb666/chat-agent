@@ -85,3 +85,19 @@ def test_login_wrong_password():
         "password": "wrong",
     })
     assert resp.status_code == 401
+
+
+def test_me_returns_role():
+    """/api/v1/auth/me should include role in response."""
+    client.post("/api/v1/auth/register", json={"username": "eve", "password": "secret123"})
+    login_resp = client.post("/api/v1/auth/login", data={
+        "username": "eve",
+        "password": "secret123",
+    })
+    token = login_resp.json()["access_token"]
+    resp = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["username"] == "eve"
+    assert "role" in data
+    assert data["role"] == "user"

@@ -19,6 +19,7 @@ class RegisterRequest(BaseModel):
 class UserResponse(BaseModel):
     id: int = Field(..., description="用户 ID")
     username: str = Field(..., description="用户名")
+    role: str = Field(..., description="用户角色")
 
     model_config = ConfigDict(from_attributes=True)
 
