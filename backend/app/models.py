@@ -19,6 +19,44 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(default=_now)
 
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+    knowledge_documents: Mapped[list["KnowledgeDocument"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+
+
+class KnowledgeDocument(Base):
+    __tablename__ = "knowledge_documents"
+
+    id: Mapped[str] = mapped_column(primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    filename: Mapped[str]
+    mime_type: Mapped[str]
+    file_size: Mapped[int]
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    visibility: Mapped[str] = mapped_column(default="public")  # private | shared | public
+    status: Mapped[str] = mapped_column(default="pending")     # pending | processing | completed | failed
+    chunk_count: Mapped[int] = mapped_column(default=0)
+    vector_indexed: Mapped[bool] = mapped_column(default=False)
+    error_message: Mapped[str] = mapped_column(Text, default="")
+    access_count: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+    updated_at: Mapped[datetime] = mapped_column(default=_now, onupdate=_now)
+    processed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    path: Mapped[str] = mapped_column(default="")
+
+    owner: Mapped[User] = relationship(back_populates="knowledge_documents")
+    chunks: Mapped[list["KnowledgeChunk"]] = relationship(back_populates="document", cascade="all, delete-orphan")
+
+
+class KnowledgeChunk(Base):
+    __tablename__ = "knowledge_chunks"
+
+    id: Mapped[str] = mapped_column(primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    document_id: Mapped[str] = mapped_column(ForeignKey("knowledge_documents.id"))
+    content: Mapped[str] = mapped_column(Text)
+    chunk_index: Mapped[int]
+    title_path: Mapped[str] = mapped_column(default="")
+    meta_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+
+    document: Mapped[KnowledgeDocument] = relationship(back_populates="chunks")
 
 
 class Conversation(Base):

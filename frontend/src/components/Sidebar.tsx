@@ -1,17 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
-import { Plus, MessageSquare, Pencil, Brain, Shield, LogOut, Search, Users } from 'lucide-react';
+import { Plus, MessageSquare, Pencil, Brain, Shield, LogOut, Search, Users, BookOpen } from 'lucide-react';
 import type { Conversation } from '../types';
 
 interface SidebarProps {
   conversations: Conversation[];
   currentConvId: string | null;
-  currentPage: 'chat' | 'memories' | 'admin';
+  currentPage: 'chat' | 'memories' | 'admin' | 'knowledge';
   isAdmin: boolean;
   username: string;
   onSelect: (id: string) => void;
   onCreate: () => void;
   onRename: (id: string, title: string) => void;
-  onNavigate: (page: 'chat' | 'memories' | 'admin') => void;
+  onNavigate: (page: 'chat' | 'memories' | 'admin' | 'knowledge') => void;
   onSwitchUser: (username: 'admin' | 'local') => void;
   onLogout: () => void;
 }
@@ -51,6 +51,17 @@ export default function Sidebar({
         >
           <Brain size={18} />
           <span>记忆管理</span>
+        </button>
+        <button
+          onClick={() => onNavigate(currentPage === 'knowledge' ? 'chat' : 'knowledge')}
+          className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border transition-colors duration-200 mt-2 ${
+            currentPage === 'knowledge'
+              ? 'bg-amber-600 hover:bg-amber-700 text-white border-amber-500'
+              : 'bg-white hover:bg-gray-100 text-gray-600 border-gray-200'
+          }`}
+        >
+          <BookOpen size={18} />
+          <span>知识库</span>
         </button>
         {isAdmin && (
           <button

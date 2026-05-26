@@ -145,3 +145,29 @@ export interface AdminConversation {
 export interface AdminConversationDetail extends AdminConversation {
   messages: { role: string; content: string; created_at: string }[];
 }
+
+// Knowledge base types
+export interface KnowledgeDocument {
+  id: string;
+  filename: string;
+  mime_type: string;
+  file_size: number;
+  visibility: 'private' | 'shared' | 'public';
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  chunk_count: number;
+  created_at: string;
+}
+
+export interface KnowledgeChunk {
+  id: string;
+  content: string;
+  chunk_index: number;
+  title_path: string;
+}
+
+export interface KnowledgeSearchResult {
+  chunk_id: string;
+  document_id: string;
+  content: string;
+  distance: number;
+}

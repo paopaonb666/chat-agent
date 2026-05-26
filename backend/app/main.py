@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, Response
 from prometheus_client import Counter, Histogram, generate_latest, REGISTRY as prom_registry
 from app.core.config import settings
 from app.core.logging import setup_logging
-from app.routers import chat, auth, files, memory, admin
+from app.routers import chat, auth, files, memory, admin, knowledge
 from app.db import Base, engine, SessionLocal
 from app import models  # noqa: F401
 from app.core.milvus import get_milvus_client
@@ -95,6 +95,7 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(files.router, prefix="/api/v1")
 app.include_router(memory.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(knowledge.router, prefix="/api/v1")
 
 
 @app.get("/health")
