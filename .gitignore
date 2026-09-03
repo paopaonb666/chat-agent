@@ -41,4 +41,7 @@ ollama.log
 *.md
 !README.md
 
+# TRAE / IDE local share
+.trae-html-share-packages/
+
 # Config
